@@ -419,6 +419,39 @@ static int get_physical_address_pmp(CPURISCVState *env, int *prot,
     return TRANSLATE_SUCCESS;
 }
 
+/*
+ * get_physical_address_smpu - check SMPU permission for this physical address
+ *
+ * Match the SMPU region and check permission for this physical address.
+ * Returns 0 if the permission checking was successful.
+ * The SMPU check is happened before the PMP check.
+ *
+ * @env: CPURISCVState
+ * @prot: The returned protection attributes
+ * @addr: The physical address to be checked permission
+ * @access_type: The type of access
+ * @mode: Indicates current privilege level.
+ */
+static int get_physical_address_smpu(CPURISCVState *env, int *prot, hwaddr addr,
+                                    int size, int access_type,
+                                    int mode)
+{
+    smpu_priv_t smpu_priv;
+
+    if (!riscv_feature(env, RISCV_FEATURE_SMPU)) {
+        *prot = PAGE_READ | PAGE_WRITE | PAGE_EXEC;
+        return TRANSLATE_SUCCESS;
+    }
+
+    if (!smpu_hart_has_privs(env, addr, size, 1 << access_type, &smpu_priv,
+                            mode)) {
+        *prot = 0;
+        return TRANSLATE_SMPU_FAIL;
+    }
+
+    return TRANSLATE_SUCCESS;
+}
+
 /* get_physical_address - get the physical address for this virtual address
  *
  * Do a page table walk to obtain the physical address corresponding to a
@@ -601,6 +634,14 @@ restart:
             pte_addr = vbase + idx * ptesize;
         } else {
             pte_addr = base + idx * ptesize;
+        }
+
+        int smpu_prot;
+        int smpu_ret = get_physical_address_smpu(env, &smpu_prot, pte_addr,
+                                               sizeof(target_ulong),
+                                               MMU_DATA_LOAD, PRV_S);
+        if (smpu_ret != TRANSLATE_SUCCESS) {
+            return TRANSLATE_SMPU_FAIL;
         }
 
         int pmp_prot;

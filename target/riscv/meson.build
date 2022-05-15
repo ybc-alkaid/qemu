@@ -26,6 +26,7 @@ riscv_softmmu_ss = ss.source_set()
 riscv_softmmu_ss.add(files(
   'arch_dump.c',
   'pmp.c',
+  'smpu.c',
   'monitor.c',
   'machine.c'
 ))

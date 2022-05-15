@@ -224,6 +224,15 @@ static RISCVException epmp(CPURISCVState *env, int csrno)
 
     return RISCV_EXCP_ILLEGAL_INST;
 }
+
+static RISCVException smpu(CPURISCVState *env, int csrno)
+{
+    if (riscv_feature(env, RISCV_FEATURE_SMPU)) {
+        return RISCV_EXCP_NONE;
+    }
+
+    return RISCV_EXCP_ILLEGAL_INST;
+}
 #endif
 
 /* User Floating-Point CSRs */
@@ -1573,6 +1582,53 @@ static RISCVException write_pmpaddr(CPURISCVState *env, int csrno,
     return RISCV_EXCP_NONE;
 }
 
+/* S-mode Memory Protection Unit */
+static bool check_smpu_reg_index(CPURISCVState *env, uint32_t reg_index)
+{
+    if ((reg_index & 1) && (riscv_cpu_mxl(env) == MXL_RV64)) {
+        return false;
+    }
+    return true;
+}
+
+static RISCVException read_smpucfg(CPURISCVState *env, int csrno,
+                                  target_ulong *val)
+{
+    uint32_t reg_index = csrno - CSR_SMPUCFG0;
+
+    if (!check_smpu_reg_index(env, reg_index)) {
+        return RISCV_EXCP_ILLEGAL_INST;
+    }
+    *val = smpucfg_csr_read(env, csrno - CSR_SMPUCFG0);
+    return RISCV_EXCP_NONE;
+}
+
+static RISCVException write_smpucfg(CPURISCVState *env, int csrno,
+                                   target_ulong val)
+{
+    uint32_t reg_index = csrno - CSR_SMPUCFG0;
+
+    if (!check_smpu_reg_index(env, reg_index)) {
+        return RISCV_EXCP_ILLEGAL_INST;
+    }
+    smpucfg_csr_write(env, csrno - CSR_SMPUCFG0, val);
+    return RISCV_EXCP_NONE;
+}
+
+static RISCVException read_smpuaddr(CPURISCVState *env, int csrno,
+                                   target_ulong *val)
+{
+    *val = smpuaddr_csr_read(env, csrno - CSR_SMPUADDR0);
+    return RISCV_EXCP_NONE;
+}
+
+static RISCVException write_smpuaddr(CPURISCVState *env, int csrno,
+                                    target_ulong val)
+{
+    smpuaddr_csr_write(env, csrno - CSR_SMPUADDR0, val);
+    return RISCV_EXCP_NONE;
+}
+
 /*
  * Functions to access Pointer Masking feature registers
  * We have to check if current priv lvl could modify
@@ -2187,6 +2243,88 @@ riscv_csr_operations csr_ops[CSR_TABLE_SIZE] = {
     [CSR_PMPADDR13]  = { "pmpaddr13", pmp, read_pmpaddr, write_pmpaddr },
     [CSR_PMPADDR14] =  { "pmpaddr14", pmp, read_pmpaddr, write_pmpaddr },
     [CSR_PMPADDR15] =  { "pmpaddr15", pmp, read_pmpaddr, write_pmpaddr },
+
+    /* S-mode Memory Protection Unit */
+    [CSR_SMPUCFG0]    = { "smpucfg0",   smpu, read_smpucfg,  write_smpucfg  },
+    [CSR_SMPUCFG1]    = { "smpucfg1",   smpu, read_smpucfg,  write_smpucfg  },
+    [CSR_SMPUCFG2]    = { "smpucfg2",   smpu, read_smpucfg,  write_smpucfg  },
+    [CSR_SMPUCFG3]    = { "smpucfg3",   smpu, read_smpucfg,  write_smpucfg  },
+    [CSR_SMPUCFG4]    = { "smpucfg4",   smpu, read_smpucfg,  write_smpucfg  },
+    [CSR_SMPUCFG5]    = { "smpucfg5",   smpu, read_smpucfg,  write_smpucfg  },
+    [CSR_SMPUCFG6]    = { "smpucfg6",   smpu, read_smpucfg,  write_smpucfg  },
+    [CSR_SMPUCFG7]    = { "smpucfg7",   smpu, read_smpucfg,  write_smpucfg  },
+    [CSR_SMPUCFG8]    = { "smpucfg8",   smpu, read_smpucfg,  write_smpucfg  },
+    [CSR_SMPUCFG9]    = { "smpucfg9",   smpu, read_smpucfg,  write_smpucfg  },
+    [CSR_SMPUCFG10]   = { "smpucfg10",  smpu, read_smpucfg,  write_smpucfg  },
+    [CSR_SMPUCFG11]   = { "smpucfg11",  smpu, read_smpucfg,  write_smpucfg  },
+    [CSR_SMPUCFG12]   = { "smpucfg12",  smpu, read_smpucfg,  write_smpucfg  },
+    [CSR_SMPUCFG13]   = { "smpucfg13",  smpu, read_smpucfg,  write_smpucfg  },
+    [CSR_SMPUCFG14]   = { "smpucfg14",  smpu, read_smpucfg,  write_smpucfg  },
+    [CSR_SMPUCFG15]   = { "smpucfg15",  smpu, read_smpucfg,  write_smpucfg  },
+    [CSR_SMPUADDR0]   = { "smpuaddr0",  smpu, read_smpuaddr, write_smpuaddr },
+    [CSR_SMPUADDR1]   = { "smpuaddr1",  smpu, read_smpuaddr, write_smpuaddr },
+    [CSR_SMPUADDR2]   = { "smpuaddr2",  smpu, read_smpuaddr, write_smpuaddr },
+    [CSR_SMPUADDR3]   = { "smpuaddr3",  smpu, read_smpuaddr, write_smpuaddr },
+    [CSR_SMPUADDR4]   = { "smpuaddr4",  smpu, read_smpuaddr, write_smpuaddr },
+    [CSR_SMPUADDR5]   = { "smpuaddr5",  smpu, read_smpuaddr, write_smpuaddr },
+    [CSR_SMPUADDR6]   = { "smpuaddr6",  smpu, read_smpuaddr, write_smpuaddr },
+    [CSR_SMPUADDR7]   = { "smpuaddr7",  smpu, read_smpuaddr, write_smpuaddr },
+    [CSR_SMPUADDR8]   = { "smpuaddr8",  smpu, read_smpuaddr, write_smpuaddr },
+    [CSR_SMPUADDR9]   = { "smpuaddr9",  smpu, read_smpuaddr, write_smpuaddr },
+    [CSR_SMPUADDR10]  = { "smpuaddr10", smpu, read_smpuaddr, write_smpuaddr },
+    [CSR_SMPUADDR11]  = { "smpuaddr11", smpu, read_smpuaddr, write_smpuaddr },
+    [CSR_SMPUADDR12]  = { "smpuaddr12", smpu, read_smpuaddr, write_smpuaddr },
+    [CSR_SMPUADDR13]  = { "smpuaddr13", smpu, read_smpuaddr, write_smpuaddr },
+    [CSR_SMPUADDR14]  = { "smpuaddr14", smpu, read_smpuaddr, write_smpuaddr },
+    [CSR_SMPUADDR15]  = { "smpuaddr15", smpu, read_smpuaddr, write_smpuaddr },
+    [CSR_SMPUADDR16]  = { "smpuaddr16", smpu, read_smpuaddr, write_smpuaddr },
+    [CSR_SMPUADDR17]  = { "smpuaddr17", smpu, read_smpuaddr, write_smpuaddr },
+    [CSR_SMPUADDR18]  = { "smpuaddr18", smpu, read_smpuaddr, write_smpuaddr },
+    [CSR_SMPUADDR19]  = { "smpuaddr19", smpu, read_smpuaddr, write_smpuaddr },
+    [CSR_SMPUADDR20]  = { "smpuaddr20", smpu, read_smpuaddr, write_smpuaddr },
+    [CSR_SMPUADDR21]  = { "smpuaddr21", smpu, read_smpuaddr, write_smpuaddr },
+    [CSR_SMPUADDR22]  = { "smpuaddr22", smpu, read_smpuaddr, write_smpuaddr },
+    [CSR_SMPUADDR23]  = { "smpuaddr23", smpu, read_smpuaddr, write_smpuaddr },
+    [CSR_SMPUADDR24]  = { "smpuaddr24", smpu, read_smpuaddr, write_smpuaddr },
+    [CSR_SMPUADDR25]  = { "smpuaddr25", smpu, read_smpuaddr, write_smpuaddr },
+    [CSR_SMPUADDR26]  = { "smpuaddr26", smpu, read_smpuaddr, write_smpuaddr },
+    [CSR_SMPUADDR27]  = { "smpuaddr27", smpu, read_smpuaddr, write_smpuaddr },
+    [CSR_SMPUADDR28]  = { "smpuaddr28", smpu, read_smpuaddr, write_smpuaddr },
+    [CSR_SMPUADDR29]  = { "smpuaddr29", smpu, read_smpuaddr, write_smpuaddr },
+    [CSR_SMPUADDR30]  = { "smpuaddr30", smpu, read_smpuaddr, write_smpuaddr },
+    [CSR_SMPUADDR31]  = { "smpuaddr31", smpu, read_smpuaddr, write_smpuaddr },
+    [CSR_SMPUADDR32]  = { "smpuaddr32", smpu, read_smpuaddr, write_smpuaddr },
+    [CSR_SMPUADDR33]  = { "smpuaddr33", smpu, read_smpuaddr, write_smpuaddr },
+    [CSR_SMPUADDR34]  = { "smpuaddr34", smpu, read_smpuaddr, write_smpuaddr },
+    [CSR_SMPUADDR35]  = { "smpuaddr35", smpu, read_smpuaddr, write_smpuaddr },
+    [CSR_SMPUADDR36]  = { "smpuaddr36", smpu, read_smpuaddr, write_smpuaddr },
+    [CSR_SMPUADDR37]  = { "smpuaddr37", smpu, read_smpuaddr, write_smpuaddr },
+    [CSR_SMPUADDR38]  = { "smpuaddr38", smpu, read_smpuaddr, write_smpuaddr },
+    [CSR_SMPUADDR39]  = { "smpuaddr39", smpu, read_smpuaddr, write_smpuaddr },
+    [CSR_SMPUADDR40]  = { "smpuaddr40", smpu, read_smpuaddr, write_smpuaddr },
+    [CSR_SMPUADDR41]  = { "smpuaddr41", smpu, read_smpuaddr, write_smpuaddr },
+    [CSR_SMPUADDR42]  = { "smpuaddr42", smpu, read_smpuaddr, write_smpuaddr },
+    [CSR_SMPUADDR43]  = { "smpuaddr43", smpu, read_smpuaddr, write_smpuaddr },
+    [CSR_SMPUADDR44]  = { "smpuaddr44", smpu, read_smpuaddr, write_smpuaddr },
+    [CSR_SMPUADDR45]  = { "smpuaddr45", smpu, read_smpuaddr, write_smpuaddr },
+    [CSR_SMPUADDR46]  = { "smpuaddr46", smpu, read_smpuaddr, write_smpuaddr },
+    [CSR_SMPUADDR47]  = { "smpuaddr47", smpu, read_smpuaddr, write_smpuaddr },
+    [CSR_SMPUADDR48]  = { "smpuaddr48", smpu, read_smpuaddr, write_smpuaddr },
+    [CSR_SMPUADDR49]  = { "smpuaddr49", smpu, read_smpuaddr, write_smpuaddr },
+    [CSR_SMPUADDR50]  = { "smpuaddr50", smpu, read_smpuaddr, write_smpuaddr },
+    [CSR_SMPUADDR51]  = { "smpuaddr51", smpu, read_smpuaddr, write_smpuaddr },
+    [CSR_SMPUADDR52]  = { "smpuaddr52", smpu, read_smpuaddr, write_smpuaddr },
+    [CSR_SMPUADDR53]  = { "smpuaddr53", smpu, read_smpuaddr, write_smpuaddr },
+    [CSR_SMPUADDR54]  = { "smpuaddr54", smpu, read_smpuaddr, write_smpuaddr },
+    [CSR_SMPUADDR55]  = { "smpuaddr55", smpu, read_smpuaddr, write_smpuaddr },
+    [CSR_SMPUADDR56]  = { "smpuaddr56", smpu, read_smpuaddr, write_smpuaddr },
+    [CSR_SMPUADDR57]  = { "smpuaddr57", smpu, read_smpuaddr, write_smpuaddr },
+    [CSR_SMPUADDR58]  = { "smpuaddr58", smpu, read_smpuaddr, write_smpuaddr },
+    [CSR_SMPUADDR59]  = { "smpuaddr59", smpu, read_smpuaddr, write_smpuaddr },
+    [CSR_SMPUADDR60]  = { "smpuaddr60", smpu, read_smpuaddr, write_smpuaddr },
+    [CSR_SMPUADDR61]  = { "smpuaddr61", smpu, read_smpuaddr, write_smpuaddr },
+    [CSR_SMPUADDR62]  = { "smpuaddr62", smpu, read_smpuaddr, write_smpuaddr },
+    [CSR_SMPUADDR63]  = { "smpuaddr63", smpu, read_smpuaddr, write_smpuaddr },
 
     /* User Pointer Masking */
     [CSR_UMTE]    =    { "umte",    pointer_masking, read_umte,    write_umte    },
