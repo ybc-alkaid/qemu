@@ -2,6 +2,7 @@
  * QEMU RISC-V SMPU (S-mode Memory Protection Unit)
  *
  * Author: Bicheng Yang, SuperYbc@outlook.com
+ *         Dong Du,      Ddnirvana1@gmail.com
  *
  * This provides a RISC-V S-mode Memory Protection Unit interface
  *
