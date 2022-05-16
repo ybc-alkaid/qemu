@@ -26,7 +26,7 @@ typedef enum {
     SMPU_READ  = 1 << 0,
     SMPU_WRITE = 1 << 1,
     SMPU_EXEC  = 1 << 2,
-    SMPU_SMODE  = 1 << 7
+    SMPU_SMODE = 1 << 7
 } smpu_priv_t;
 
 typedef enum {
@@ -65,5 +65,6 @@ bool smpu_hart_has_privs(CPURISCVState *env, target_ulong addr,
 void smpu_update_rule_addr(CPURISCVState *env, uint32_t smpu_index);
 void smpu_update_rule_nums(CPURISCVState *env);
 uint32_t smpu_get_num_rules(CPURISCVState *env);
+int smpu_priv_to_page_prot(smpu_priv_t smpu_priv);
 
 #endif

@@ -505,3 +505,24 @@ target_ulong smpuaddr_csr_read(CPURISCVState *env, uint32_t addr_index)
 
     return val;
 }
+
+/*
+ * Convert SMPU privilege to TLB page privilege.
+ */
+int smpu_priv_to_page_prot(smpu_priv_t smpu_priv)
+{
+    int prot = 0;
+
+    if (smpu_priv & SMPU_READ) {
+        prot |= PAGE_READ;
+    }
+    if (smpu_priv & SMPU_WRITE) {
+        prot |= PAGE_WRITE;
+    }
+    if (smpu_priv & SMPU_EXEC) {
+        prot |= PAGE_EXEC;
+    }
+
+    return prot;
+}
+
