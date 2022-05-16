@@ -993,18 +993,34 @@ bool riscv_cpu_tlb_fill(CPUState *cs, vaddr address, int size,
                       __func__, address, ret, pa, prot);
 
         if (ret == TRANSLATE_SUCCESS) {
-            /* S-mode Memory Protection Unit check */
-            ret = get_physical_address_smpu(env, &prot_smpu, pa,
-                                               size, access_type, mode);
+            /*
+             * The SMPU and the paging mechanism will not 
+             * take effect simultaneously.
+             * Check both SMPU and PMP if the core is running in bare mode 
+             * or the HW does not implement an MMU.
+             * Check PMP only if paging is enabled.
+             */
+            int vm;
+            if (riscv_cpu_mxl(env) == MXL_RV32) {
+                vm = get_field(env->satp, SATP32_MODE);
+            } else {
+                vm = get_field(env->satp, SATP64_MODE);
+            }
 
-            qemu_log_mask(CPU_LOG_MMU,
-                          "%s SMPU address=" TARGET_FMT_plx " ret %d prot %d\n",
-                          __func__, pa, ret, prot_smpu);
+            if (vm == VM_1_10_MBARE) {
+                /* S-mode Memory Protection Unit check */
+                ret = get_physical_address_smpu(env, &prot_smpu, pa,
+                                                size, access_type, mode);
 
-            prot &= prot_smpu;
+                qemu_log_mask(CPU_LOG_MMU,
+                            "%s SMPU address=" TARGET_FMT_plx " ret %d prot %d\n",
+                            __func__, pa, ret, prot_smpu);
 
-            if (ret == TRANSLATE_SMPU_FAIL) {
-                smpu_violation = true;
+                prot &= prot_smpu;
+
+                if (ret == TRANSLATE_SMPU_FAIL) {
+                    smpu_violation = true;
+                }
             }
 
             /* Physical Memory Protection check */
