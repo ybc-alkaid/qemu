@@ -779,7 +779,8 @@ static void raise_mmu_exception(CPURISCVState *env, target_ulong address,
         vm = get_field(env->hgatp, stap_mode);
     }
 
-    page_fault_exceptions = vm != VM_1_10_MBARE && !pmp_violation || smpu_violation;
+    page_fault_exceptions = (vm != VM_1_10_MBARE || smpu_violation) && !pmp_violation;
+
 
     switch (access_type) {
     case MMU_INST_FETCH:
@@ -994,9 +995,9 @@ bool riscv_cpu_tlb_fill(CPUState *cs, vaddr address, int size,
 
         if (ret == TRANSLATE_SUCCESS) {
             /*
-             * The SMPU and the paging mechanism will not 
+             * The SMPU and the paging mechanism will not
              * take effect simultaneously.
-             * Check both SMPU and PMP if the core is running in bare mode 
+             * Check both SMPU and PMP if the core is running in bare mode
              * or the HW does not implement an MMU.
              * Check PMP only if paging is enabled.
              */
@@ -1023,16 +1024,19 @@ bool riscv_cpu_tlb_fill(CPUState *cs, vaddr address, int size,
                 }
             }
 
-            /* Physical Memory Protection check */
-            ret = get_physical_address_pmp(env, &prot_pmp, &tlb_size, pa,
-                                           size, access_type, mode);
+			/* Only apply checks when the SMPU passed */
+			if (ret != TRANSLATE_SMPU_FAIL) {
+				/* Physical Memory Protection check */
+				ret = get_physical_address_pmp(env, &prot_pmp, &tlb_size, pa,
+						size, access_type, mode);
 
-            qemu_log_mask(CPU_LOG_MMU,
-                          "%s PMP address=" TARGET_FMT_plx " ret %d prot"
-                          " %d tlb_size " TARGET_FMT_lu "\n",
-                          __func__, pa, ret, prot_pmp, tlb_size);
+				qemu_log_mask(CPU_LOG_MMU,
+						"%s PMP address=" TARGET_FMT_plx " ret %d prot"
+						" %d tlb_size " TARGET_FMT_lu "\n",
+						__func__, pa, ret, prot_pmp, tlb_size);
 
-            prot &= prot_pmp;
+				prot &= prot_pmp;
+			}
         }
     }
 

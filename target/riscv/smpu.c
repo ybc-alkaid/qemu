@@ -256,6 +256,12 @@ bool smpu_hart_has_privs(CPURISCVState *env, target_ulong addr,
     target_ulong s = 0;
     target_ulong e = 0;
 
+	/* Short cut for M-mode access*/
+    if (mode == PRV_M) {
+		*allowed_privs = SMPU_READ | SMPU_WRITE | SMPU_EXEC;
+		return true;
+	}
+
     /* Short cut if no rules */
     if (0 == smpu_get_num_rules(env)) {
         return smpu_hart_has_privs_default(env, addr, size, privs,
@@ -412,10 +418,10 @@ bool smpu_hart_has_privs(CPURISCVState *env, target_ulong addr,
                     g_assert_not_reached();
                 }
             }
+			ret = ((privs & *allowed_privs) == privs);
+			break;
         }
 
-        ret = ((privs & *allowed_privs) == privs);
-        break;
     }
 
     /* No rule matched */
@@ -445,9 +451,11 @@ void smpucfg_csr_write(CPURISCVState *env, uint32_t reg_index,
     }
 
     /* If SMPU permission of any addr has been changed, and the HW enables MMU, flush TLB pages. */
+#if 0
     if (riscv_feature(env, RISCV_FEATURE_MMU)) {
         tlb_flush(env_cpu(env));
     }
+#endif
 }
 
 
@@ -466,6 +474,7 @@ target_ulong smpucfg_csr_read(CPURISCVState *env, uint32_t reg_index)
         cfg_val |= (val << (i * 8));
     }
     // trace_smpucfg_csr_read(env->mhartid, reg_index, cfg_val);
+
 
     return cfg_val;
 }
