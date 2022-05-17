@@ -412,10 +412,9 @@ bool smpu_hart_has_privs(CPURISCVState *env, target_ulong addr,
                     g_assert_not_reached();
                 }
             }
+            ret = ((privs & *allowed_privs) == privs);
+            break;
         }
-
-        ret = ((privs & *allowed_privs) == privs);
-        break;
     }
 
     /* No rule matched */
