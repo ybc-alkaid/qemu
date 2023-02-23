@@ -78,7 +78,7 @@ enum {
     RISCV_FEATURE_MMU,
     RISCV_FEATURE_PMP,
     RISCV_FEATURE_EPMP,
-    RISCV_FEATURE_SMPU,
+    RISCV_FEATURE_SPMP,
     RISCV_FEATURE_MISA
 };
 
@@ -91,20 +91,20 @@ enum {
     TRANSLATE_SUCCESS,
     TRANSLATE_FAIL,
     TRANSLATE_PMP_FAIL,
-    TRANSLATE_SMPU_FAIL,
+    TRANSLATE_SPMP_FAIL,
     TRANSLATE_G_STAGE_FAIL
 };
 
 #define MMU_USER_IDX 3
 
 #define MAX_RISCV_PMPS (16)
-#define MAX_RISCV_SMPUS (64)
+#define MAX_RISCV_SPMPS (64)
 
 typedef struct CPURISCVState CPURISCVState;
 
 #if !defined(CONFIG_USER_ONLY)
 #include "pmp.h"
-#include "smpu.h"
+#include "spmp.h"
 #endif
 
 #define RV_VLEN_MAX 1024
@@ -252,8 +252,8 @@ struct CPURISCVState {
     pmp_table_t pmp_state;
     target_ulong mseccfg;
 
-    /* S-mode memory protection unit */
-    smpu_table_t smpu_state;
+    /* S-mode Physical Memory Protection */
+    spmp_table_t spmp_state;
 
     /* machine specific rdtime callback */
     uint64_t (*rdtime_fn)(uint32_t);
@@ -362,7 +362,7 @@ struct RISCVCPU {
         bool mmu;
         bool pmp;
         bool epmp;
-        bool smpu;
+        bool spmp;
         uint64_t resetvec;
     } cfg;
 };

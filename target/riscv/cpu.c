@@ -522,8 +522,8 @@ static void riscv_cpu_realize(DeviceState *dev, Error **errp)
         }
     }
 
-    if (cpu->cfg.smpu) {
-        set_feature(env, RISCV_FEATURE_SMPU);
+    if (cpu->cfg.spmp) {
+        set_feature(env, RISCV_FEATURE_SPMP);
     }
 
     set_resetvec(env, cpu->cfg.resetvec);
@@ -742,8 +742,8 @@ static Property riscv_cpu_properties[] = {
     DEFINE_PROP_BOOL("x-j", RISCVCPU, cfg.ext_j, false),
     /* ePMP 0.9.3 */
     DEFINE_PROP_BOOL("x-epmp", RISCVCPU, cfg.epmp, false),
-    /* S-mode memory protection unit */
-    DEFINE_PROP_BOOL("smpu", RISCVCPU, cfg.smpu, true),
+    /* S-mode Physical Memory Protection */
+    DEFINE_PROP_BOOL("spmp", RISCVCPU, cfg.spmp, true),
 
     DEFINE_PROP_UINT64("resetvec", RISCVCPU, cfg.resetvec, DEFAULT_RSTVEC),
     DEFINE_PROP_END_OF_LIST(),

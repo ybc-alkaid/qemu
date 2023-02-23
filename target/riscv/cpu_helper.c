@@ -420,11 +420,11 @@ static int get_physical_address_pmp(CPURISCVState *env, int *prot,
 }
 
 /*
- * get_physical_address_smpu - check SMPU permission for this physical address
+ * get_physical_address_spmp - check SPMP permission for this physical address
  *
- * Match the SMPU region and check permission for this physical address.
+ * Match the SPMP region and check permission for this physical address.
  * Returns 0 if the permission checking was successful.
- * The SMPU check is happened before the PMP check.
+ * The SPMP check is happened before the PMP check.
  *
  * @env: CPURISCVState
  * @prot: The returned protection attributes
@@ -432,24 +432,24 @@ static int get_physical_address_pmp(CPURISCVState *env, int *prot,
  * @access_type: The type of access
  * @mode: Indicates current privilege level.
  */
-static int get_physical_address_smpu(CPURISCVState *env, int *prot, hwaddr addr,
+static int get_physical_address_spmp(CPURISCVState *env, int *prot, hwaddr addr,
                                     int size, int access_type,
                                     int mode)
 {
-    smpu_priv_t smpu_priv;
+    spmp_priv_t spmp_priv;
 
-    if (!riscv_feature(env, RISCV_FEATURE_SMPU)) {
+    if (!riscv_feature(env, RISCV_FEATURE_SPMP)) {
         *prot = PAGE_READ | PAGE_WRITE | PAGE_EXEC;
         return TRANSLATE_SUCCESS;
     }
 
-    if (!smpu_hart_has_privs(env, addr, size, 1 << access_type, &smpu_priv,
+    if (!spmp_hart_has_privs(env, addr, size, 1 << access_type, &spmp_priv,
                             mode)) {
         *prot = 0;
-        return TRANSLATE_SMPU_FAIL;
+        return TRANSLATE_SPMP_FAIL;
     }
 
-    *prot = smpu_priv_to_page_prot(smpu_priv);
+    *prot = spmp_priv_to_page_prot(spmp_priv);
 
     return TRANSLATE_SUCCESS;
 }
@@ -760,7 +760,7 @@ restart:
 }
 
 static void raise_mmu_exception(CPURISCVState *env, target_ulong address,
-                                MMUAccessType access_type, bool smpu_violation, bool pmp_violation,
+                                MMUAccessType access_type, bool spmp_violation, bool pmp_violation,
                                 bool first_stage, bool two_stage)
 {
     CPUState *cs = env_cpu(env);
@@ -779,7 +779,7 @@ static void raise_mmu_exception(CPURISCVState *env, target_ulong address,
         vm = get_field(env->hgatp, stap_mode);
     }
 
-    page_fault_exceptions = (vm != VM_1_10_MBARE || smpu_violation) && !pmp_violation;
+    page_fault_exceptions = (vm != VM_1_10_MBARE || spmp_violation) && !pmp_violation;
 
 
     switch (access_type) {
@@ -893,8 +893,8 @@ bool riscv_cpu_tlb_fill(CPUState *cs, vaddr address, int size,
     CPURISCVState *env = &cpu->env;
     vaddr im_address;
     hwaddr pa = 0;
-    int prot, prot2, prot_smpu, prot_pmp;
-    bool smpu_violation = false;
+    int prot, prot2, prot_spmp, prot_pmp;
+    bool spmp_violation = false;
     bool pmp_violation = false;
     bool first_stage_error = true;
     bool two_stage_lookup = false;
@@ -959,7 +959,7 @@ bool riscv_cpu_tlb_fill(CPUState *cs, vaddr address, int size,
             prot &= prot2;
 
             if (ret == TRANSLATE_SUCCESS) {
-                /* TODO: VSMPU check */
+                /* TODO: VSPMP check */
 
                 ret = get_physical_address_pmp(env, &prot_pmp, &tlb_size, pa,
                                                size, access_type, mode);
@@ -995,9 +995,9 @@ bool riscv_cpu_tlb_fill(CPUState *cs, vaddr address, int size,
 
         if (ret == TRANSLATE_SUCCESS) {
             /*
-             * The SMPU and the paging mechanism will not
+             * The SPMP and the paging mechanism will not
              * take effect simultaneously.
-             * Check both SMPU and PMP if the core is running in bare mode
+             * Check both SPMP and PMP if the core is running in bare mode
              * or the HW does not implement an MMU.
              * Check PMP only if paging is enabled.
              */
@@ -1009,23 +1009,23 @@ bool riscv_cpu_tlb_fill(CPUState *cs, vaddr address, int size,
             }
 
             if (vm == VM_1_10_MBARE) {
-                /* S-mode Memory Protection Unit check */
-                ret = get_physical_address_smpu(env, &prot_smpu, pa,
+                /* S-mode Physical Memory Protection check */
+                ret = get_physical_address_spmp(env, &prot_spmp, pa,
                                                 size, access_type, mode);
 
                 qemu_log_mask(CPU_LOG_MMU,
-                            "%s SMPU address=" TARGET_FMT_plx " ret %d prot %d\n",
-                            __func__, pa, ret, prot_smpu);
+                            "%s SPMP address=" TARGET_FMT_plx " ret %d prot %d\n",
+                            __func__, pa, ret, prot_spmp);
 
-                prot &= prot_smpu;
+                prot &= prot_spmp;
 
-                if (ret == TRANSLATE_SMPU_FAIL) {
-                    smpu_violation = true;
+                if (ret == TRANSLATE_SPMP_FAIL) {
+                    spmp_violation = true;
                 }
             }
 
-			/* Only apply checks when the SMPU passed */
-			if (ret != TRANSLATE_SMPU_FAIL) {
+			/* Only apply checks when the SPMP passed */
+			if (ret != TRANSLATE_SPMP_FAIL) {
 				/* Physical Memory Protection check */
 				ret = get_physical_address_pmp(env, &prot_pmp, &tlb_size, pa,
 						size, access_type, mode);
@@ -1052,7 +1052,7 @@ bool riscv_cpu_tlb_fill(CPUState *cs, vaddr address, int size,
         return false;
     } else {
         raise_mmu_exception(env, address, access_type,
-                            smpu_violation, pmp_violation,
+                            spmp_violation, pmp_violation,
                             first_stage_error,
                             riscv_cpu_virt_enabled(env) ||
                                 riscv_cpu_two_stage_lookup(mmu_idx));

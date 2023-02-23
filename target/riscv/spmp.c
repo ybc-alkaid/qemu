@@ -1,10 +1,10 @@
 /*
- * QEMU RISC-V SMPU (S-mode Memory Protection Unit)
+ * QEMU RISC-V SPMP (S-mode Physical Memory Protection)
  *
  * Author: Bicheng Yang, SuperYbc@outlook.com
  *         Dong Du,      Ddnirvana1@gmail.com
  *
- * This provides a RISC-V S-mode Memory Protection Unit interface
+ * This provides a RISC-V S-mode Physical Memory Protection interface
  *
  * This program is free software; you can redistribute it and/or modify it
  * under the terms and conditions of the GNU General Public License,
@@ -27,15 +27,15 @@
 #include "trace.h"
 #include "exec/exec-all.h"
 
-static void smpu_write_cfg(CPURISCVState *env, uint32_t addr_index,
+static void spmp_write_cfg(CPURISCVState *env, uint32_t addr_index,
     uint8_t val);
-static uint8_t smpu_read_cfg(CPURISCVState *env, uint32_t addr_index);
-static void smpu_update_rule(CPURISCVState *env, uint32_t smpu_index);
+static uint8_t spmp_read_cfg(CPURISCVState *env, uint32_t addr_index);
+static void spmp_update_rule(CPURISCVState *env, uint32_t spmp_index);
 
 /*
  * Accessor method to extract address matching type 'a field' from cfg reg
  */
-static inline uint8_t smpu_get_a_field(uint8_t cfg)
+static inline uint8_t spmp_get_a_field(uint8_t cfg)
 {
     uint8_t a = cfg >> 3;
     return a & 0x3;
@@ -54,12 +54,12 @@ static inline int sum_is_set(CPURISCVState *env)
 }
 
 /*
- * Check whether an SMPU is s-mode only or not.
+ * Check whether an SPMP is s-mode only or not.
  */
-static inline int smpu_is_smode_only(CPURISCVState *env, uint32_t smpu_index)
+static inline int spmp_is_smode_only(CPURISCVState *env, uint32_t spmp_index)
 {
 
-    if (env->smpu_state.smpu[smpu_index].cfg_reg & SMPU_SMODE) {
+    if (env->spmp_state.spmp[spmp_index].cfg_reg & SPMP_SMODE) {
         return 1;
     }
 
@@ -69,39 +69,39 @@ static inline int smpu_is_smode_only(CPURISCVState *env, uint32_t smpu_index)
 /*
  * Count the number of active rules.
  */
-uint32_t smpu_get_num_rules(CPURISCVState *env)
+uint32_t spmp_get_num_rules(CPURISCVState *env)
 {
-     return env->smpu_state.num_rules;
+     return env->spmp_state.num_rules;
 }
 
 /*
- * Accessor to get the cfg reg for a specific SMPU/HART
+ * Accessor to get the cfg reg for a specific SPMP/HART
  */
-static inline uint8_t smpu_read_cfg(CPURISCVState *env, uint32_t smpu_index)
+static inline uint8_t spmp_read_cfg(CPURISCVState *env, uint32_t spmp_index)
 {
-    if (smpu_index < MAX_RISCV_SMPUS) {
-        return env->smpu_state.smpu[smpu_index].cfg_reg;
+    if (spmp_index < MAX_RISCV_SPMPS) {
+        return env->spmp_state.spmp[spmp_index].cfg_reg;
     }
 
     return 0;
 }
 
 /*
- * Accessor to set the cfg reg for a specific SMPU/HART
+ * Accessor to set the cfg reg for a specific SPMP/HART
  * Bounds checks.
  */
-static void smpu_write_cfg(CPURISCVState *env, uint32_t smpu_index, uint8_t val)
+static void spmp_write_cfg(CPURISCVState *env, uint32_t spmp_index, uint8_t val)
 {
-    if (smpu_index < MAX_RISCV_SMPUS) {
-        env->smpu_state.smpu[smpu_index].cfg_reg = val;
-        smpu_update_rule(env, smpu_index);
+    if (spmp_index < MAX_RISCV_SPMPS) {
+        env->spmp_state.spmp[spmp_index].cfg_reg = val;
+        spmp_update_rule(env, spmp_index);
     } else {
         qemu_log_mask(LOG_GUEST_ERROR,
-                    "ignoring smpucfg write - out of bounds\n");
+                    "ignoring spmpcfg write - out of bounds\n");
     }
 }
 
-static void smpu_decode_napot(target_ulong a, target_ulong *sa, target_ulong *ea)
+static void spmp_decode_napot(target_ulong a, target_ulong *sa, target_ulong *ea)
 {
     /*
        aaaa...aaa0   8-byte NAPOT range
@@ -126,36 +126,36 @@ static void smpu_decode_napot(target_ulong a, target_ulong *sa, target_ulong *ea
     }
 }
 
-void smpu_update_rule_addr(CPURISCVState *env, uint32_t smpu_index)
+void spmp_update_rule_addr(CPURISCVState *env, uint32_t spmp_index)
 {
-    uint8_t this_cfg = env->smpu_state.smpu[smpu_index].cfg_reg;
-    target_ulong this_addr = env->smpu_state.smpu[smpu_index].addr_reg;
+    uint8_t this_cfg = env->spmp_state.spmp[spmp_index].cfg_reg;
+    target_ulong this_addr = env->spmp_state.spmp[spmp_index].addr_reg;
     target_ulong prev_addr = 0u;
     target_ulong sa = 0u;
     target_ulong ea = 0u;
 
-    if (smpu_index >= 1u) {
-        prev_addr = env->smpu_state.smpu[smpu_index - 1].addr_reg;
+    if (spmp_index >= 1u) {
+        prev_addr = env->spmp_state.spmp[spmp_index - 1].addr_reg;
     }
 
-    switch (smpu_get_a_field(this_cfg)) {
-    case SMPU_AMATCH_OFF:
+    switch (spmp_get_a_field(this_cfg)) {
+    case SPMP_AMATCH_OFF:
         sa = 0u;
         ea = -1;
         break;
 
-    case SMPU_AMATCH_TOR:
+    case SPMP_AMATCH_TOR:
         sa = prev_addr << 2; /* shift up from [xx:0] to [xx+2:2] */
         ea = (this_addr << 2) - 1u;
         break;
 
-    case SMPU_AMATCH_NA4:
+    case SPMP_AMATCH_NA4:
         sa = this_addr << 2; /* shift up from [xx:0] to [xx+2:2] */
         ea = (sa + 4u) - 1u;
         break;
 
-    case SMPU_AMATCH_NAPOT:
-        smpu_decode_napot(this_addr, &sa, &ea);
+    case SPMP_AMATCH_NAPOT:
+        spmp_decode_napot(this_addr, &sa, &ea);
         break;
 
     default:
@@ -164,20 +164,20 @@ void smpu_update_rule_addr(CPURISCVState *env, uint32_t smpu_index)
         break;
     }
 
-    env->smpu_state.addr[smpu_index].sa = sa;
-    env->smpu_state.addr[smpu_index].ea = ea;
+    env->spmp_state.addr[spmp_index].sa = sa;
+    env->spmp_state.addr[spmp_index].ea = ea;
 }
 
-void smpu_update_rule_nums(CPURISCVState *env)
+void spmp_update_rule_nums(CPURISCVState *env)
 {
     int i;
 
-    env->smpu_state.num_rules = 0;
-    for (i = 0; i < MAX_RISCV_SMPUS; i++) {
+    env->spmp_state.num_rules = 0;
+    for (i = 0; i < MAX_RISCV_SPMPS; i++) {
         const uint8_t a_field =
-            smpu_get_a_field(env->smpu_state.smpu[i].cfg_reg);
-        if (SMPU_AMATCH_OFF != a_field) {
-            env->smpu_state.num_rules++;
+            spmp_get_a_field(env->spmp_state.spmp[i].cfg_reg);
+        if (SPMP_AMATCH_OFF != a_field) {
+            env->spmp_state.num_rules++;
         }
     }
 }
@@ -185,20 +185,20 @@ void smpu_update_rule_nums(CPURISCVState *env)
 /* Convert cfg/addr reg values here into simple 'sa' --> start address and 'ea'
  *   end address values.
  *   This function is called relatively infrequently whereas the check that
- *   an address is within a smpu rule is called often, so optimise that one
+ *   an address is within a spmp rule is called often, so optimise that one
  */
-static void smpu_update_rule(CPURISCVState *env, uint32_t smpu_index)
+static void spmp_update_rule(CPURISCVState *env, uint32_t spmp_index)
 {
-    smpu_update_rule_addr(env, smpu_index);
-    smpu_update_rule_nums(env);
+    spmp_update_rule_addr(env, spmp_index);
+    spmp_update_rule_nums(env);
 }
 
-static int smpu_is_in_range(CPURISCVState *env, int smpu_index, target_ulong addr)
+static int spmp_is_in_range(CPURISCVState *env, int spmp_index, target_ulong addr)
 {
     int result = 0;
 
-    if ((addr >= env->smpu_state.addr[smpu_index].sa)
-        && (addr <= env->smpu_state.addr[smpu_index].ea)) {
+    if ((addr >= env->spmp_state.addr[spmp_index].sa)
+        && (addr <= env->spmp_state.addr[spmp_index].ea)) {
         result = 1;
     } else {
         result = 0;
@@ -208,23 +208,23 @@ static int smpu_is_in_range(CPURISCVState *env, int smpu_index, target_ulong add
 }
 
 /*
- * Check if the address has required RWX privs when no SMPU entry is matched.
+ * Check if the address has required RWX privs when no SPMP entry is matched.
  */
-static bool smpu_hart_has_privs_default(CPURISCVState *env, target_ulong addr,
-    target_ulong size, smpu_priv_t privs, smpu_priv_t *allowed_privs,
+static bool spmp_hart_has_privs_default(CPURISCVState *env, target_ulong addr,
+    target_ulong size, spmp_priv_t privs, spmp_priv_t *allowed_privs,
     target_ulong mode)
 {
     bool ret;
 
-    if ((!riscv_feature(env, RISCV_FEATURE_SMPU)) || (mode != PRV_U)) {
+    if ((!riscv_feature(env, RISCV_FEATURE_SPMP)) || (mode != PRV_U)) {
         /*
-         * The SMPU proposal states three circumstances that the access is allowed:
-         * 1. The HW does not implement any SMPU entry.
-         * 2. The HW implements SMPU, but no SMPU entry matches S-Mode access.
+         * The SPMP proposal states three circumstances that the access is allowed:
+         * 1. The HW does not implement any SPMP entry.
+         * 2. The HW implements SPMP, but no SPMP entry matches S-Mode access.
          * 3. The access mode is M.
          */
         ret = true;
-        *allowed_privs = SMPU_READ | SMPU_WRITE | SMPU_EXEC;
+        *allowed_privs = SPMP_READ | SPMP_WRITE | SPMP_EXEC;
     } else {
         /*
          * U-mode is not allowed to succeed if they don't match a rule,
@@ -246,25 +246,25 @@ static bool smpu_hart_has_privs_default(CPURISCVState *env, target_ulong addr,
 /*
  * Check if the address has required RWX privs to complete desired operation
  */
-bool smpu_hart_has_privs(CPURISCVState *env, target_ulong addr,
-    target_ulong size, smpu_priv_t privs, smpu_priv_t *allowed_privs,
+bool spmp_hart_has_privs(CPURISCVState *env, target_ulong addr,
+    target_ulong size, spmp_priv_t privs, spmp_priv_t *allowed_privs,
     target_ulong mode)
 {
     int i = 0;
     int ret = -1;
-    int smpu_size = 0;
+    int spmp_size = 0;
     target_ulong s = 0;
     target_ulong e = 0;
 
 	/* Short cut for M-mode access*/
     if (mode == PRV_M) {
-		*allowed_privs = SMPU_READ | SMPU_WRITE | SMPU_EXEC;
+		*allowed_privs = SPMP_READ | SPMP_WRITE | SPMP_EXEC;
 		return true;
 	}
 
     /* Short cut if no rules */
-    if (0 == smpu_get_num_rules(env)) {
-        return smpu_hart_has_privs_default(env, addr, size, privs,
+    if (0 == spmp_get_num_rules(env)) {
+        return spmp_hart_has_privs_default(env, addr, size, privs,
                                           allowed_privs, mode);
     }
 
@@ -274,49 +274,49 @@ bool smpu_hart_has_privs(CPURISCVState *env, target_ulong addr,
              * If size is unknown (0), assume that all bytes
              * from addr to the end of the page will be accessed.
              */
-            smpu_size = -(addr | TARGET_PAGE_MASK);
+            spmp_size = -(addr | TARGET_PAGE_MASK);
         } else {
-            smpu_size = sizeof(target_ulong);
+            spmp_size = sizeof(target_ulong);
         }
     } else {
-        smpu_size = size;
+        spmp_size = size;
     }
 
     /* 1.10 draft priv spec states there is an implicit order
          from low to high */
-    for (i = 0; i < MAX_RISCV_SMPUS; i++) {
-        s = smpu_is_in_range(env, i, addr);
-        e = smpu_is_in_range(env, i, addr + smpu_size - 1);
+    for (i = 0; i < MAX_RISCV_SPMPS; i++) {
+        s = spmp_is_in_range(env, i, addr);
+        e = spmp_is_in_range(env, i, addr + spmp_size - 1);
 
         /* partially inside */
         if ((s + e) == 1) {
             qemu_log_mask(LOG_GUEST_ERROR,
-                          "smpu violation - access is partially inside\n");
+                          "spmp violation - access is partially inside\n");
             ret = 0;
             break;
         }
 
         /* fully inside */
         const uint8_t a_field =
-            smpu_get_a_field(env->smpu_state.smpu[i].cfg_reg);
+            spmp_get_a_field(env->spmp_state.spmp[i].cfg_reg);
 
         /*
-         * Convert the SMPU permissions to match the truth table in the
-         * SMPU spec.
+         * Convert the SPMP permissions to match the truth table in the
+         * SPMP spec.
          */
-        const uint8_t smpu_operation =
-            ((env->smpu_state.smpu[i].cfg_reg & SMPU_SMODE) >> 4) |
-            ((env->smpu_state.smpu[i].cfg_reg & SMPU_READ) << 2) |
-            (env->smpu_state.smpu[i].cfg_reg & SMPU_WRITE) |
-            ((env->smpu_state.smpu[i].cfg_reg & SMPU_EXEC) >> 2);
+        const uint8_t spmp_operation =
+            ((env->spmp_state.spmp[i].cfg_reg & SPMP_SMODE) >> 4) |
+            ((env->spmp_state.spmp[i].cfg_reg & SPMP_READ) << 2) |
+            (env->spmp_state.spmp[i].cfg_reg & SPMP_WRITE) |
+            ((env->spmp_state.spmp[i].cfg_reg & SPMP_EXEC) >> 2);
 
-        if (((s + e) == 2) && (SMPU_AMATCH_OFF != a_field)) {
+        if (((s + e) == 2) && (SPMP_AMATCH_OFF != a_field)) {
             /*
-             * If the SMPU entry is not off and the address is in range,
+             * If the SPMP entry is not off and the address is in range,
              * do the priv check
              */
             if ((mode == PRV_S) && !sum_is_set(env)) {
-                switch (smpu_operation) {
+                switch (spmp_operation) {
                 case 0:
                 case 1:
                 case 4:
@@ -328,29 +328,29 @@ bool smpu_hart_has_privs(CPURISCVState *env, target_ulong addr,
                 case 2:
                 case 3:
                 case 14:
-                    *allowed_privs = SMPU_READ | SMPU_WRITE;
+                    *allowed_privs = SPMP_READ | SPMP_WRITE;
                     break;
                 case 8:
                     /* Reserved region, mark it as RWX for now. */
-                    *allowed_privs = SMPU_READ | SMPU_WRITE | SMPU_EXEC;
+                    *allowed_privs = SPMP_READ | SPMP_WRITE | SPMP_EXEC;
                     break;
                 case 9:
                 case 10:
-                    *allowed_privs = SMPU_EXEC;
+                    *allowed_privs = SPMP_EXEC;
                     break;
                 case 11:
                 case 13:
-                    *allowed_privs = SMPU_READ | SMPU_EXEC;
+                    *allowed_privs = SPMP_READ | SPMP_EXEC;
                     break;
                 case 12:
                 case 15:
-                    *allowed_privs = SMPU_READ;
+                    *allowed_privs = SPMP_READ;
                     break;
                 default:
                     g_assert_not_reached();
                 }
             } else if ((mode == PRV_S) && sum_is_set(env)) {
-                switch (smpu_operation) {
+                switch (spmp_operation) {
                 case 0:
                 case 1:
                     *allowed_privs = 0;
@@ -360,31 +360,31 @@ bool smpu_hart_has_privs(CPURISCVState *env, target_ulong addr,
                 case 6:
                 case 7:
                 case 14:
-                    *allowed_privs = SMPU_READ | SMPU_WRITE;
+                    *allowed_privs = SPMP_READ | SPMP_WRITE;
                     break;
                 case 4:
                 case 5:
                 case 12:
                 case 15:
-                    *allowed_privs = SMPU_READ;
+                    *allowed_privs = SPMP_READ;
                     break;
                 case 8:
                     /* Reserved region, mark it as RWX for now. */
-                    *allowed_privs = SMPU_READ | SMPU_WRITE | SMPU_EXEC;
+                    *allowed_privs = SPMP_READ | SPMP_WRITE | SPMP_EXEC;
                     break;
                 case 9:
                 case 10:
-                    *allowed_privs = SMPU_EXEC;
+                    *allowed_privs = SPMP_EXEC;
                     break;
                 case 11:
                 case 13:
-                    *allowed_privs = SMPU_READ | SMPU_EXEC;
+                    *allowed_privs = SPMP_READ | SPMP_EXEC;
                     break;
                 default:
                     g_assert_not_reached();
                 }
             } else if (mode == PRV_U) {
-                switch (smpu_operation) {
+                switch (spmp_operation) {
                 case 0:
                 case 8:
                     /* Reserved region, mark it as inaccessible for now. */
@@ -397,22 +397,22 @@ bool smpu_hart_has_privs(CPURISCVState *env, target_ulong addr,
                 case 1:
                 case 10:
                 case 11:
-                    *allowed_privs = SMPU_EXEC;
+                    *allowed_privs = SPMP_EXEC;
                     break;
                 case 2:
                 case 4:
                 case 15:
-                    *allowed_privs = SMPU_READ;
+                    *allowed_privs = SPMP_READ;
                     break;
                 case 3:
                 case 6:
-                    *allowed_privs = SMPU_READ | SMPU_WRITE;
+                    *allowed_privs = SPMP_READ | SPMP_WRITE;
                     break;
                 case 5:
-                    *allowed_privs = SMPU_READ | SMPU_EXEC;
+                    *allowed_privs = SPMP_READ | SPMP_EXEC;
                     break;
                 case 7:
-                    *allowed_privs = SMPU_READ | SMPU_WRITE | SMPU_EXEC;
+                    *allowed_privs = SPMP_READ | SPMP_WRITE | SPMP_EXEC;
                     break;
                 default:
                     g_assert_not_reached();
@@ -425,7 +425,7 @@ bool smpu_hart_has_privs(CPURISCVState *env, target_ulong addr,
 
     /* No rule matched */
     if (ret == -1) {
-        return smpu_hart_has_privs_default(env, addr, size, privs,
+        return spmp_hart_has_privs_default(env, addr, size, privs,
                                           allowed_privs, mode);
     }
 
@@ -433,23 +433,23 @@ bool smpu_hart_has_privs(CPURISCVState *env, target_ulong addr,
 }
 
 /*
- * Handle a write to a smpucfg CSR
+ * Handle a write to a spmpcfg CSR
  */
-void smpucfg_csr_write(CPURISCVState *env, uint32_t reg_index,
+void spmpcfg_csr_write(CPURISCVState *env, uint32_t reg_index,
     target_ulong val)
 {
     int i;
     uint8_t cfg_val;
-    int smpucfg_nums = 2 << riscv_cpu_mxl(env);
+    int spmpcfg_nums = 2 << riscv_cpu_mxl(env);
 
-    // trace_smpucfg_csr_write(env->mhartid, reg_index, val);
+    // trace_spmpcfg_csr_write(env->mhartid, reg_index, val);
 
-    for (i = 0; i < smpucfg_nums; i++) {
+    for (i = 0; i < spmpcfg_nums; i++) {
         cfg_val = (val >> 8 * i)  & 0xff;
-        smpu_write_cfg(env, (reg_index * 4) + i, cfg_val);
+        spmp_write_cfg(env, (reg_index * 4) + i, cfg_val);
     }
 
-    /* If SMPU permission of any addr has been changed, and the HW enables MMU, flush TLB pages. */
+    /* If SPMP permission of any addr has been changed, and the HW enables MMU, flush TLB pages. */
 #if 0
     if (riscv_feature(env, RISCV_FEATURE_MMU)) {
         tlb_flush(env_cpu(env));
@@ -459,20 +459,20 @@ void smpucfg_csr_write(CPURISCVState *env, uint32_t reg_index,
 
 
 /*
- * Handle a read from a smpucfg CSR
+ * Handle a read from a spmpcfg CSR
  */
-target_ulong smpucfg_csr_read(CPURISCVState *env, uint32_t reg_index)
+target_ulong spmpcfg_csr_read(CPURISCVState *env, uint32_t reg_index)
 {
     int i;
     target_ulong cfg_val = 0;
     target_ulong val = 0;
-    int smpucfg_nums = 2 << riscv_cpu_mxl(env);
+    int spmpcfg_nums = 2 << riscv_cpu_mxl(env);
 
-    for (i = 0; i < smpucfg_nums; i++) {
-        val = smpu_read_cfg(env, (reg_index * 4) + i);
+    for (i = 0; i < spmpcfg_nums; i++) {
+        val = spmp_read_cfg(env, (reg_index * 4) + i);
         cfg_val |= (val << (i * 8));
     }
-    // trace_smpucfg_csr_read(env->mhartid, reg_index, cfg_val);
+    // trace_spmpcfg_csr_read(env->mhartid, reg_index, cfg_val);
 
 
     return cfg_val;
@@ -480,54 +480,54 @@ target_ulong smpucfg_csr_read(CPURISCVState *env, uint32_t reg_index)
 
 
 /*
- * Handle a write to a smpuaddr CSR
+ * Handle a write to a spmpaddr CSR
  */
-void smpuaddr_csr_write(CPURISCVState *env, uint32_t addr_index,
+void spmpaddr_csr_write(CPURISCVState *env, uint32_t addr_index,
     target_ulong val)
 {
-    // trace_smpuaddr_csr_write(env->mhartid, addr_index, val);
+    // trace_spmpaddr_csr_write(env->mhartid, addr_index, val);
 
-    if (addr_index < MAX_RISCV_SMPUS) {
-        env->smpu_state.smpu[addr_index].addr_reg = val;
-        smpu_update_rule(env, addr_index);
+    if (addr_index < MAX_RISCV_SPMPS) {
+        env->spmp_state.spmp[addr_index].addr_reg = val;
+        spmp_update_rule(env, addr_index);
     } else {
         qemu_log_mask(LOG_GUEST_ERROR,
-                      "ignoring smpuaddr write - out of bounds\n");
+                      "ignoring spmpaddr write - out of bounds\n");
     }
 }
 
 /*
- * Handle a read from a smpuaddr CSR
+ * Handle a read from a spmpaddr CSR
  */
-target_ulong smpuaddr_csr_read(CPURISCVState *env, uint32_t addr_index)
+target_ulong spmpaddr_csr_read(CPURISCVState *env, uint32_t addr_index)
 {
     target_ulong val = 0;
 
-    if (addr_index < MAX_RISCV_SMPUS) {
-        val = env->smpu_state.smpu[addr_index].addr_reg;
-        // trace_smpuaddr_csr_read(env->mhartid, addr_index, val);
+    if (addr_index < MAX_RISCV_SPMPS) {
+        val = env->spmp_state.spmp[addr_index].addr_reg;
+        // trace_spmpaddr_csr_read(env->mhartid, addr_index, val);
     } else {
         qemu_log_mask(LOG_GUEST_ERROR,
-                      "ignoring smpuaddr read - out of bounds\n");
+                      "ignoring spmpaddr read - out of bounds\n");
     }
 
     return val;
 }
 
 /*
- * Convert SMPU privilege to TLB page privilege.
+ * Convert SPMP privilege to TLB page privilege.
  */
-int smpu_priv_to_page_prot(smpu_priv_t smpu_priv)
+int spmp_priv_to_page_prot(spmp_priv_t spmp_priv)
 {
     int prot = 0;
 
-    if (smpu_priv & SMPU_READ) {
+    if (spmp_priv & SPMP_READ) {
         prot |= PAGE_READ;
     }
-    if (smpu_priv & SMPU_WRITE) {
+    if (spmp_priv & SPMP_WRITE) {
         prot |= PAGE_WRITE;
     }
-    if (smpu_priv & SMPU_EXEC) {
+    if (spmp_priv & SPMP_EXEC) {
         prot |= PAGE_EXEC;
     }
 
