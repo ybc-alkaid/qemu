@@ -443,9 +443,9 @@
  * Supervisor PointerMaster registers
  * NB: actual CSR numbers might be changed in future
  */
-#define CSR_SMTE            0x1c0
-#define CSR_SPMMASK         0x1c1
-#define CSR_SPMBASE         0x1c2
+#define CSR_SMTE            0x1f0
+#define CSR_SPMMASK         0x1f1
+#define CSR_SPMBASE         0x1f2
 
 /*
  * Hypervisor PointerMaster registers
