@@ -332,7 +332,8 @@ bool spmp_hart_has_privs(CPURISCVState *env, target_ulong addr,
                     break;
                 case 8:
                     /* Reserved region, mark it as RWX for now. */
-                    *allowed_privs = SPMP_READ | SPMP_WRITE | SPMP_EXEC;
+                    *allowed_privs = SPMP_READ | SPMP_EXEC;
+
                     break;
                 case 9:
                 case 10:
@@ -370,7 +371,7 @@ bool spmp_hart_has_privs(CPURISCVState *env, target_ulong addr,
                     break;
                 case 8:
                     /* Reserved region, mark it as RWX for now. */
-                    *allowed_privs = SPMP_READ | SPMP_WRITE | SPMP_EXEC;
+                    *allowed_privs = SPMP_READ | SPMP_EXEC;
                     break;
                 case 9:
                 case 10:
@@ -385,9 +386,11 @@ bool spmp_hart_has_privs(CPURISCVState *env, target_ulong addr,
                 }
             } else if (mode == PRV_U) {
                 switch (spmp_operation) {
-                case 0:
                 case 8:
                     /* Reserved region, mark it as inaccessible for now. */
+                    *allowed_privs = SPMP_READ | SPMP_EXEC;
+                    break;
+                case 0:
                 case 9:
                 case 12:
                 case 13:
